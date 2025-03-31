@@ -35,6 +35,7 @@ const reactions = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️�
 
 client.once("ready", () => {
   console.log("Bot is online!");
+  client.channels.cache.get(channelId).send('Hello here!');
 });
 
 async function postAvailabilitySurvey() {
@@ -101,6 +102,7 @@ client.login(config.DISCORD_TOKEN);
 cron.schedule('0 0 * * 0', () => {
 // cron.schedule('*/10 * * * * *', () => {
   postAvailabilitySurvey();
+  console.log(`Ran CRON-Job ${dayjs(new Date()).format('DD.MM.YYYY - HH:mm:ss')}`);
 });
 
 // Add this function to check results after a certain period (e.g., 24 hours)
