@@ -8,4 +8,4 @@ Create and configure .env
 
 `docker build -t discord-bot .`
 
-`docker run --name discord-bot --restart unless-stopped discord-bot`
+`docker run -d --name discord-bot --restart unless-stopped discord-bot`
