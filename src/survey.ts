@@ -1,6 +1,6 @@
 export class Survey {
-    private lastSurveyId: number;
-    private kw: number;
+    protected lastSurveyId: number;
+    protected kw: number;
 
     constructor () {
         this.lastSurveyId = -1;
@@ -23,4 +23,14 @@ export class Survey {
     getId() {
         return this.lastSurveyId;
     }
-  }
+}
+
+export class SurveyResult extends Survey {
+    isAvailable() {
+        return this.lastSurveyId > -1;
+    }
+
+    saveSurvey(id: number, kw: number) {
+        this.lastSurveyId = id;
+    }
+}

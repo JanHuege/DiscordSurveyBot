@@ -3,7 +3,7 @@ import weekOfYear from 'dayjs/plugin/weekOfYear'
 import dayjs from "dayjs";
 import cron from "node-cron";
 import { config } from "./config";
-import { Survey } from "./survey";
+import { Survey, SurveyResult } from "./survey";
 
 dayjs.extend(weekOfYear);
 
@@ -11,13 +11,16 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ],
 });
 
 // Channel ID where you want to post the survey
 const channelId = "1308827165101522975";
 const survey = new Survey();
+const surveyResult = new SurveyResult();
+let pauseUntilNextSurvey = false;
 
 // Days of the week for the survey
 const weekdays = [
@@ -33,10 +36,45 @@ const weekdays = [
 // Emoji reactions for voting
 const reactions = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣"];
 
-client.once("ready", () => {
+client.once("ready", async () => {
   console.log("Bot is online!");
+
+  const messages = await client.channels.cache.get(channelId).messages.fetch({limit: 100});
+  await client.channels.cache.get(channelId).bulkDelete(messages);
   client.channels.cache.get(channelId).send('Hello here!');
 });
+
+
+client.on("messageCreate", (message) => {
+  if (message.author.username === "khaos_theory" && message.content.includes("PAUSE")) {
+    pauseUntilNextSurvey = true;
+    client.channels.cache.get(channelId).send('I will stop to calculate results until the next survey begins!');
+  }
+  
+  if (message.author.username === "khaos_theory" && message.content.includes("CONTINUE")) {
+    pauseUntilNextSurvey = false;
+    client.channels.cache.get(channelId).send('I will resume to calculate results for the active survey!');
+  }
+
+  
+});
+
+// At 12:00 AM, only on Sunday
+cron.schedule('0 0 * * 0', () => {
+// cron.schedule('*/30 * * * * *', () => {
+  pauseUntilNextSurvey = false;
+  postAvailabilitySurvey();
+  console.log(`Ran Survey CRON-Job ${dayjs(new Date()).format('DD.MM.YYYY - HH:mm:ss')}`);
+});
+
+// At 06:00 PM
+cron.schedule('0 18 * * *', () => {
+// cron.schedule('*/5 * * * * *', () => {
+    checkResults()
+    console.log(`Ran Result CRON-Job ${dayjs(new Date()).format('DD.MM.YYYY - HH:mm:ss')}`);
+  }
+);
+
 
 async function postAvailabilitySurvey() {
   const channel: TextChannel | undefined = client.channels.cache.get(channelId);
@@ -67,24 +105,20 @@ async function postAvailabilitySurvey() {
       }
     })
     surveyEmbed.addFields(...fields);
-  
-    if (survey.isAvailable()) {
-      const resultMessage = await checkSurveyResults(survey.getId());
-      const messages: Map<String, Message> = await channel.messages.fetch({limit: 100});
+
+    const messages: Map<String, Message> = await channel.messages.fetch({limit: 100});
 
       for (let [key, value] of messages) {
         if (!value.embeds.some(embed => embed.data.title?.includes("Ergebnis"))) {
           await value.delete();
         }
       }
-      
-      await channel!.send({embeds: [resultMessage]});
-    }
   
     // Send the survey and add reaction options
     const surveyMessage = await channel!.send({embeds: [surveyEmbed]});
   
     survey.saveSurvey(surveyMessage.id, weekNumber);
+    surveyResult.saveSurvey(-1, -1);
   
     // Add reaction options for each day
     for (let i = 0; i < weekdays.length; i++) {
@@ -93,19 +127,27 @@ async function postAvailabilitySurvey() {
   }
 }
 
+const checkResults = async () => {
+  const channel: TextChannel | undefined = client.channels.cache.get(channelId);
+  
+  if (channel && survey.isAvailable() && !pauseUntilNextSurvey) {
+      const resultMessage = await checkSurveyResults(survey.getId());
+      
+      
+      if (surveyResult.isAvailable()) {
+        try {
+          await channel.messages.delete(`${surveyResult.getId()}`);  
+        } catch (e) {
+          console.error("Could not delete old Resultmessage");
+        }
+        
+      }
+      const sentResultMessage = await channel!.send({embeds: [resultMessage]});
 
-client.login(config.DISCORD_TOKEN);
+      surveyResult.saveSurvey(sentResultMessage.id, -1)
+    }
+}
 
-
-
-// Schedule the survey to run every Sunday at 12 AM
-cron.schedule('0 0 * * 0', () => {
-// cron.schedule('*/10 * * * * *', () => {
-  postAvailabilitySurvey();
-  console.log(`Ran CRON-Job ${dayjs(new Date()).format('DD.MM.YYYY - HH:mm:ss')}`);
-});
-
-// Add this function to check results after a certain period (e.g., 24 hours)
 const checkSurveyResults = async (id: number) => {
   const channel = client.channels.cache.get(channelId);
   if (channel) {
@@ -122,6 +164,12 @@ const checkSurveyResults = async (id: number) => {
     results.sort((a, b) => b.count - a.count);
 
     const maxCount = results[0].count;
+
+    if (maxCount < 3) {
+      return new EmbedBuilder()
+      .setTitle(`Bisher kein Termin für KW ${survey.getKW()}`)
+      .setColor("#0099ff");
+    }
 
     const potentialDays = results.filter(res => res.count === maxCount);
 
@@ -166,3 +214,5 @@ const getDaysOfWeek = (weekNumber: number) => {
   
   return daysOfWeek;
 }
+
+client.login(config.DISCORD_TOKEN);
