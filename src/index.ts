@@ -1,11 +1,17 @@
 import { APIEmbedField, Channel, Client, EmbedBuilder, GatewayIntentBits, Message, RestOrArray, TextChannel } from "discord.js";
 import weekOfYear from 'dayjs/plugin/weekOfYear' 
+import updateLocale from 'dayjs/plugin/updateLocale'
 import dayjs from "dayjs";
 import cron from "node-cron";
 import { config } from "./config";
 import { Survey, SurveyResult } from "./survey";
 
 dayjs.extend(weekOfYear);
+dayjs.extend(updateLocale);
+
+dayjs.updateLocale('en', {
+  weekStart: 1,
+})
 
 const client = new Client({
   intents: [
@@ -45,7 +51,7 @@ client.once("ready", async () => {
 });
 
 
-client.on("messageCreate", (message) => {
+client.on("messageCreate", async (message) => {
   if (message.author.username === "khaos_theory" && message.content.includes("PAUSE")) {
     pauseUntilNextSurvey = true;
     client.channels.cache.get(channelId).send('I will stop to calculate results until the next survey begins!');
@@ -56,6 +62,13 @@ client.on("messageCreate", (message) => {
     client.channels.cache.get(channelId).send('I will resume to calculate results for the active survey!');
   }
 
+  if (message.author.username === "khaos_theory" && message.content.includes("RESET")) {
+    const messages = await client.channels.cache.get(channelId).messages.fetch({limit: 100});
+    await client.channels.cache.get(channelId).bulkDelete(messages);
+    client.channels.cache.get(channelId).send('Hello here!');
+    pauseUntilNextSurvey = false;
+    postAvailabilitySurvey(0);
+  }
   
 });
 
@@ -75,13 +88,12 @@ cron.schedule('0 18 * * *', () => {
   }
 );
 
-
-async function postAvailabilitySurvey() {
+async function postAvailabilitySurvey(weekOffset: number = 1) {
   const channel: TextChannel | undefined = client.channels.cache.get(channelId);
   
   if (channel) {
     const date = dayjs('2025-03-31');
-    const weekNumber = date.week() + 1;
+    const weekNumber = date.week() + weekOffset;
     const firstDateOfWeek = date.week(weekNumber).startOf('week');
     const lastDateOfWeek = date.week(weekNumber).endOf('week');
   
